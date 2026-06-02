@@ -48,6 +48,21 @@ class CastlingRights:
 
 
 @dataclass(slots=True)
+class _UndoRecord:
+    """Internal snapshot of state required to reverse a single move."""
+
+    move: Move
+    captured_piece: str
+    castling_rights: CastlingRights
+    en_passant_target: Optional[tuple[int, int]]
+    halfmove_clock: int
+    white_king_pos: tuple[int, int]
+    black_king_pos: tuple[int, int]
+    fullmove_number: int
+    had_capture: bool
+
+
+@dataclass(slots=True)
 class BoardState:
     board: BoardGrid = field(default_factory=lambda: [row[:] for row in STARTING_BOARD])
     white_to_move: bool = True
@@ -59,6 +74,7 @@ class BoardState:
     fullmove_number: int = 1
     move_history: list[Move] = field(default_factory=list)
     captured_pieces: list[str] = field(default_factory=list)
+    _undo_stack: list[_UndoRecord] = field(default_factory=list)
 
     @classmethod
     def initial(cls) -> "BoardState":
@@ -76,6 +92,7 @@ class BoardState:
             fullmove_number=self.fullmove_number,
             move_history=list(self.move_history),
             captured_pieces=list(self.captured_pieces),
+            _undo_stack=list(self._undo_stack),
         )
 
     def piece_at(self, row: int, col: int) -> str:
@@ -130,15 +147,31 @@ class BoardState:
 
     def apply_move(self, move: Move) -> None:
         moving_piece = self.piece_at(move.start_row, move.start_col)
-        captured_piece = self.piece_at(move.end_row, move.end_col)
+
+        if move.is_en_passant:
+            captured_piece = self.piece_at(move.start_row, move.end_col)
+        else:
+            captured_piece = self.piece_at(move.end_row, move.end_col)
+        had_capture = captured_piece != EMPTY
+
+        self._undo_stack.append(
+            _UndoRecord(
+                move=move,
+                captured_piece=captured_piece,
+                castling_rights=self.castling_rights.copy(),
+                en_passant_target=self.en_passant_target,
+                halfmove_clock=self.halfmove_clock,
+                white_king_pos=self.white_king_pos,
+                black_king_pos=self.black_king_pos,
+                fullmove_number=self.fullmove_number,
+                had_capture=had_capture,
+            )
+        )
 
         self.clear_square(move.start_row, move.start_col)
 
         if move.is_en_passant:
-            capture_row = move.start_row
-            capture_col = move.end_col
-            captured_piece = self.piece_at(capture_row, capture_col)
-            self.clear_square(capture_row, capture_col)
+            self.clear_square(move.start_row, move.end_col)
 
         placed_piece = moving_piece
         if move.is_promotion:
@@ -156,7 +189,7 @@ class BoardState:
                 self.clear_square(move.end_row, 0)
                 self.set_piece(move.end_row, 3, rook)
 
-        if captured_piece != EMPTY:
+        if had_capture:
             self.captured_pieces.append(captured_piece)
 
         self.move_history.append(move)
@@ -167,6 +200,50 @@ class BoardState:
         if not self.white_to_move:
             self.fullmove_number += 1
         self.white_to_move = not self.white_to_move
+
+    def undo_move(self) -> None:
+        if not self._undo_stack:
+            raise ValueError("No moves to undo")
+
+        record = self._undo_stack.pop()
+        move = record.move
+
+        # Restore turn and counters
+        self.white_to_move = not self.white_to_move
+        self.castling_rights = record.castling_rights
+        self.en_passant_target = record.en_passant_target
+        self.halfmove_clock = record.halfmove_clock
+        self.fullmove_number = record.fullmove_number
+
+        # Put the moved piece back (demote if it was a promotion)
+        original_piece = move.piece_moved
+        self.board[move.start_row][move.start_col] = original_piece
+
+        # Restore the destination square
+        if move.is_en_passant:
+            self.board[move.end_row][move.end_col] = EMPTY
+            self.board[move.start_row][move.end_col] = record.captured_piece
+        else:
+            self.board[move.end_row][move.end_col] = record.captured_piece
+
+        # Undo castling rook move
+        if move.is_castling:
+            if move.end_col == 6:
+                rook = self.board[move.end_row][5]
+                self.board[move.end_row][5] = EMPTY
+                self.board[move.end_row][7] = rook
+            elif move.end_col == 2:
+                rook = self.board[move.end_row][3]
+                self.board[move.end_row][3] = EMPTY
+                self.board[move.end_row][0] = rook
+
+        # Restore king positions (must come after board restore)
+        self.white_king_pos = record.white_king_pos
+        self.black_king_pos = record.black_king_pos
+
+        self.move_history.pop()
+        if record.had_capture:
+            self.captured_pieces.pop()
 
     def board_rows(self) -> list[str]:
         return [" ".join(row) for row in self.board]
