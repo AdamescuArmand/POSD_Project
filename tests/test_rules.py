@@ -187,3 +187,19 @@ def test_undo_after_legality_check_leaves_state_intact():
     original_fen = state.fen()
     rules.generate_legal_moves(state)
     assert state.fen() == original_fen
+
+
+def test_castling_not_generated_when_king_not_on_start_square():
+    """Even with castling rights set, the king must be on its original square."""
+    state = _empty_board()
+    state.clear_square(7, 4)  # remove the white king from e1
+    state.clear_square(0, 4)  # remove the black king from e8
+    state.set_piece(0, 0, "bK")  # place black king on a8 instead
+    state.set_piece(0, 7, "bR")  # rook is on its starting square
+    state.castling_rights = CastlingRights(
+        white_kingside=False, white_queenside=False,
+        black_kingside=True, black_queenside=False,
+    )
+    state.white_to_move = False
+    moves = rules.generate_legal_moves(state)
+    assert not any(m.is_castling for m in moves)
