@@ -240,35 +240,48 @@ def _castling_moves(state: BoardState, row: int, col: int, color: str) -> Iterat
     enemy = enemy_color(color)
     rights = state.castling_rights
 
+    # King must be on its original square to castle
+    if color == "w":
+        if (row, col) != (7, 4):
+            return
+        kingside = rights.white_kingside
+        queenside = rights.white_queenside
+        rook_kingside_square = (7, 7)
+        rook_queenside_square = (7, 0)
+    else:
+        if (row, col) != (0, 4):
+            return
+        kingside = rights.black_kingside
+        queenside = rights.black_queenside
+        rook_kingside_square = (0, 7)
+        rook_queenside_square = (0, 0)
+
     if is_square_attacked(state, row, col, enemy):
         return
 
-    if color == "w":
-        kingside = rights.white_kingside
-        queenside = rights.white_queenside
-    else:
-        kingside = rights.black_kingside
-        queenside = rights.black_queenside
-
     if kingside:
-        if state.board[row][5] == EMPTY and state.board[row][6] == EMPTY:
-            if (
-                not is_square_attacked(state, row, 5, enemy)
-                and not is_square_attacked(state, row, 6, enemy)
-            ):
-                yield Move(row, col, row, 6, piece, is_castling=True)
+        rook_row, rook_col = rook_kingside_square
+        if state.board[rook_row][rook_col] == f"{color}R":
+            if state.board[row][5] == EMPTY and state.board[row][6] == EMPTY:
+                if (
+                    not is_square_attacked(state, row, 5, enemy)
+                    and not is_square_attacked(state, row, 6, enemy)
+                ):
+                    yield Move(row, col, row, 6, piece, is_castling=True)
 
     if queenside:
-        if (
-            state.board[row][1] == EMPTY
-            and state.board[row][2] == EMPTY
-            and state.board[row][3] == EMPTY
-        ):
+        rook_row, rook_col = rook_queenside_square
+        if state.board[rook_row][rook_col] == f"{color}R":
             if (
-                not is_square_attacked(state, row, 3, enemy)
-                and not is_square_attacked(state, row, 2, enemy)
+                state.board[row][1] == EMPTY
+                and state.board[row][2] == EMPTY
+                and state.board[row][3] == EMPTY
             ):
-                yield Move(row, col, row, 2, piece, is_castling=True)
+                if (
+                    not is_square_attacked(state, row, 3, enemy)
+                    and not is_square_attacked(state, row, 2, enemy)
+                ):
+                    yield Move(row, col, row, 2, piece, is_castling=True)
 
 
 __all__ = [
