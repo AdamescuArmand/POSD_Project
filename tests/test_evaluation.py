@@ -105,14 +105,22 @@ def test_board_score_detects_checkmate_for_black_win() -> None:
     assert boardScore(state) == -CHECKMATE
 
 
+from core.rules import is_stalemate, generate_legal_moves, is_in_check
+
 def test_board_score_detects_stalemate() -> None:
     state = base_kings_only_state()
-    state.set_piece(0, 0, "bK")
-    state.set_piece(1, 2, "wQ")
-    state.set_piece(2, 1, "wK")
     state.clear_square(7, 4)
     state.clear_square(0, 4)
+    state.set_piece(0, 0, "bK")  # a8
+    state.set_piece(2, 1, "wQ")  # b6
+    state.set_piece(2, 2, "wK")  # c6
     state.white_to_move = False
+
+    print(state.fen())
+    print("stalemate:", is_stalemate(state))
+    print("in check:", is_in_check(state, "b"))
+    print("legal moves:", [m.uci() for m in generate_legal_moves(state)])
+
     assert boardScore(state) == STALEMATE
 
 
@@ -125,3 +133,15 @@ def test_board_score_changes_after_capture() -> None:
     state.apply_move(move)
     after = boardScore(state)
     assert after > before
+
+def test_castling_not_generated_when_king_not_on_start_square() -> None:
+    state = base_kings_only_state()
+    state.clear_square(7, 4)
+    state.clear_square(0, 4)
+    state.set_piece(0, 0, "bK")
+    state.set_piece(0, 7, "bR")
+    state.castling_rights.black_kingside = True
+    state.white_to_move = False
+
+    moves = generate_legal_moves(state)
+    assert "a8g8" not in [m.uci() for m in moves]
