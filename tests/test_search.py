@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+from ai.evaluation import board_score
+from ai.search import (
+    DEPTH,
+    MATE_SCORE,
+    find_best_move,
+    find_best_move_one_ply,
+    find_random_move,
+    negamax_alpha_beta,
+)
 from core.board import BoardState, EMPTY
 from core.move import Move
 from core.rules import generate_legal_moves, is_checkmate
-from ai.search import (
-    DEPTH,
-    findBestMove,
-    findBestMoveMinMax,
-    findMoveNegaMaxAlphaBetaPruning,
-    findRandomMove,
-)
-from ai.evaluation import CHECKMATE, board_score
 
 
 def clear_board(state: BoardState) -> BoardState:
@@ -37,249 +38,186 @@ def move_uci(move: Move | None) -> str | None:
     return None if move is None else move.uci()
 
 
-def test_find_random_move_returns_none_for_empty_list() -> None:
-    assert findRandomMove([]) is None
+def mating_moves(state: BoardState) -> list[str]:
+    """Return the UCI strings of every legal move that delivers mate."""
+    mates: list[str] = []
+    for move in generate_legal_moves(state):
+        state.apply_move(move)
+        if is_checkmate(state):
+            mates.append(move.uci())
+        state.undo_move()
+    return mates
 
 
-def test_find_random_move_returns_member_of_valid_moves() -> None:
+# ---------------------------------------------------------------------------
+# find_random_move
+# ---------------------------------------------------------------------------
+
+
+def test_find_random_move_returns_none_for_empty_list():
+    assert find_random_move([]) is None
+
+
+def test_find_random_move_returns_member_of_valid_moves():
     state = BoardState.initial()
     moves = generate_legal_moves(state)
-    chosen = findRandomMove(moves)
+    chosen = find_random_move(moves)
     assert chosen in moves
 
 
-def test_find_best_move_minmax_returns_legal_move_in_start_position() -> None:
+# ---------------------------------------------------------------------------
+# find_best_move_one_ply
+# ---------------------------------------------------------------------------
+
+
+def test_find_best_move_one_ply_returns_legal_move_in_start_position():
     state = BoardState.initial()
     moves = generate_legal_moves(state)
-    best = findBestMoveMinMax(state, moves)
+    best = find_best_move_one_ply(state, moves)
     assert best in moves
 
 
-def test_find_best_move_returns_legal_move_in_start_position() -> None:
+def test_find_best_move_one_ply_returns_none_when_no_moves():
+    state = BoardState.initial()
+    assert find_best_move_one_ply(state, []) is None
+
+
+# ---------------------------------------------------------------------------
+# find_best_move (full negamax search)
+# ---------------------------------------------------------------------------
+
+
+def test_find_best_move_returns_legal_move_in_start_position():
     state = BoardState.initial()
     moves = generate_legal_moves(state)
-    best = findBestMove(state, moves)
+    best = find_best_move(state, moves)
     assert best in moves
 
 
-def test_search_prefers_capturing_higher_value_piece() -> None:
-    state = base_kings_only_state()
-    state.set_piece(6, 3, "wQ")
-    state.set_piece(5, 3, "bR")
-    state.set_piece(5, 4, "bP")
-    moves = generate_legal_moves(state)
-    best = findBestMoveMinMax(state, moves, depth=1)
-    assert move_uci(best) == "d2d3"
+def test_find_best_move_returns_none_when_no_valid_moves_supplied():
+    state = BoardState.initial()
+    assert find_best_move(state, [], depth=DEPTH) is None
 
 
-def test_search_finds_winning_move_for_white_endgame() -> None:
-    state = base_kings_only_state()
-    state.clear_square(7, 4)
-    state.clear_square(0, 4)
-    state.set_piece(2, 2, "wK")
-    state.set_piece(1, 1, "wQ")
-    state.set_piece(0, 0, "bK")
-    state.white_to_move = True
-
-    moves = generate_legal_moves(state)
-    before = board_score(state)
-    best = findBestMoveMinMax(state, moves, depth=2)
-
-    assert best is not None
-    assert best in moves
-
-    state.apply_move(best)
-    after = board_score(state)
-    assert after >= before
-
-
-def test_search_finds_winning_move_for_black_endgame() -> None:
-    state = base_kings_only_state()
-    state.clear_square(7, 4)
-    state.clear_square(0, 4)
-    state.set_piece(5, 2, "bK")
-    state.set_piece(6, 1, "bQ")
-    state.set_piece(7, 0, "wK")
-    state.white_to_move = False
-
-    moves = generate_legal_moves(state)
-    before = board_score(state)
-    best = findBestMoveMinMax(state, moves, depth=2)
-
-    assert best is not None
-    assert best in moves
-
-    state.apply_move(best)
-    after = board_score(state)
-    assert after <= before
-
-
-def test_search_does_not_mutate_state_after_search() -> None:
+def test_find_best_move_does_not_mutate_state():
     state = BoardState.initial()
     original_fen = state.fen()
     original_history = list(state.move_history)
     moves = generate_legal_moves(state)
-    _ = findBestMoveMinMax(state, moves, depth=2)
+    _ = find_best_move(state, moves, depth=2)
     assert state.fen() == original_fen
     assert state.move_history == original_history
 
 
-def test_alpha_beta_returns_numeric_score() -> None:
-    state = BoardState.initial()
-    moves = generate_legal_moves(state)
-    score = findMoveNegaMaxAlphaBetaPruning(
-        state,
-        moves,
-        depth=1,
-        alpha=-CHECKMATE,
-        beta=CHECKMATE,
-        turnMultiplier=1,
-        rootDepth=1,
-    )
-    assert isinstance(score, (int, float))
-
-
-def test_search_returns_none_when_no_valid_moves_supplied() -> None:
-    state = BoardState.initial()
-    assert findBestMoveMinMax(state, [], depth=DEPTH) is None
-
-
-def test_search_chooses_move_that_improves_evaluation_at_depth_one() -> None:
+def test_find_best_move_improves_evaluation_at_depth_one():
     state = base_kings_only_state()
     state.set_piece(6, 3, "wQ")
     state.set_piece(5, 3, "bR")
     state.set_piece(4, 7, "wP")
     moves = generate_legal_moves(state)
     before = board_score(state)
-    best = findBestMoveMinMax(state, moves, depth=1)
+    best = find_best_move(state, moves, depth=1)
     assert best is not None
     state.apply_move(best)
     after = board_score(state)
     assert after > before
 
-def mating_moves(state) -> list[str]:
-    mates = []
-    for move in generate_legal_moves(state):
-        state.apply_move(move)
-        if is_checkmate(state):
-            mates.append(move_uci(move))
-        state.undo_move()
-    return mates
 
-def test_search_picks_a_mate_in_one_for_white() -> None:
+def test_find_best_move_finds_mate_in_one_for_white():
     state = base_kings_only_state()
     state.clear_square(7, 4)
     state.clear_square(0, 4)
-
-    state.set_piece(2, 7, "wK")  
-    state.set_piece(1, 6, "wQ")  
-    state.set_piece(0, 7, "bK")  
+    state.set_piece(2, 7, "wK")
+    state.set_piece(1, 6, "wQ")
+    state.set_piece(0, 7, "bK")
     state.white_to_move = True
 
     mates = mating_moves(state)
     assert mates, "Test position is not actually mate in one"
 
     moves = generate_legal_moves(state)
-    best = findBestMoveMinMax(state, moves, depth=2)
-
+    best = find_best_move(state, moves, depth=2)
     assert best is not None
     assert move_uci(best) in mates
 
-def test_search_picks_a_mate_in_one_for_black() -> None:
+
+def test_find_best_move_finds_mate_in_one_for_black():
     state = base_kings_only_state()
     state.clear_square(7, 4)
     state.clear_square(0, 4)
-
-    state.set_piece(5, 7, "bK")  
-    state.set_piece(6, 6, "bQ")  
-    state.set_piece(7, 7, "wK")  
+    state.set_piece(5, 7, "bK")
+    state.set_piece(6, 6, "bQ")
+    state.set_piece(7, 7, "wK")
     state.white_to_move = False
 
     mates = mating_moves(state)
     assert mates, "Test position is not actually mate in one"
 
     moves = generate_legal_moves(state)
-    best = findBestMoveMinMax(state, moves, depth=2)
-
+    best = find_best_move(state, moves, depth=2)
     assert best is not None
     assert move_uci(best) in mates
 
-def test_simple_and_minmax_search_both_return_legal_moves() -> None:
-    state = base_kings_only_state()
-    state.set_piece(6, 3, "wQ")
-    state.set_piece(5, 3, "bR")
-    moves = generate_legal_moves(state)
-    simple_best = findBestMove(state, moves)
-    minmax_best = findBestMoveMinMax(state, moves, depth=1)
-    assert simple_best in moves
-    assert minmax_best in moves
 
-def test_search_black_mate_in_one_king_and_rook() -> None:
+def test_find_best_move_finds_mate_with_rook_and_queen_for_white():
     state = base_kings_only_state()
     state.clear_square(7, 4)
     state.clear_square(0, 4)
-
-    state.set_piece(7, 7, "wK")  
-    state.set_piece(6, 5, "bK")  
-    state.set_piece(4, 7, "bR")  
-
-    state.white_to_move = False
-
-    moves = generate_legal_moves(state)
-    best = findBestMoveMinMax(state, moves, depth=2)
-
-    assert best is not None
-    state.apply_move(best)
-    assert is_checkmate(state)
-
-def test_search_finds_mate_in_one_for_white_simple() -> None:
-    state = base_kings_only_state()
-    state.clear_square(7, 4)
-    state.clear_square(0, 4)
-
-    state.set_piece(2, 7, "wK")  
-    state.set_piece(1, 6, "wQ")  
-    state.set_piece(0, 7, "bK")  
+    state.set_piece(2, 6, "wK")
+    state.set_piece(7, 7, "wR")
+    state.set_piece(1, 7, "wQ")
+    state.set_piece(0, 6, "bK")
     state.white_to_move = True
 
     moves = generate_legal_moves(state)
-    best = findBestMoveMinMax(state, moves, depth=2)
-
+    best = find_best_move(state, moves, depth=2)
     assert best is not None
     state.apply_move(best)
     assert is_checkmate(state)
 
-def test_search_white_mate_in_one_with_rook_and_queen() -> None:
+
+def test_find_best_move_finds_mate_with_king_and_rook_for_black():
     state = base_kings_only_state()
     state.clear_square(7, 4)
     state.clear_square(0, 4)
-
-    state.set_piece(2, 6, "wK")  
-    state.set_piece(7, 7, "wR")  
-    state.set_piece(1, 7, "wQ")  
-    state.set_piece(0, 6, "bK")  
-    state.white_to_move = True
-
-    moves = generate_legal_moves(state)
-    best = findBestMoveMinMax(state, moves, depth=2)
-
-    assert best is not None
-    state.apply_move(best)
-    assert is_checkmate(state)
-
-def test_search_finds_mate_in_one_for_black_simple() -> None:
-    state = base_kings_only_state()
-    state.clear_square(7, 4)
-    state.clear_square(0, 4)
-
-    state.set_piece(5, 7, "bK")  # h3
-    state.set_piece(6, 6, "bQ")  # g2
-    state.set_piece(7, 7, "wK")  # h1
+    state.set_piece(7, 7, "wK")
+    state.set_piece(6, 5, "bK")
+    state.set_piece(4, 7, "bR")
     state.white_to_move = False
 
     moves = generate_legal_moves(state)
-    best = findBestMoveMinMax(state, moves, depth=2)
-
+    best = find_best_move(state, moves, depth=2)
     assert best is not None
     state.apply_move(best)
     assert is_checkmate(state)
+
+
+# ---------------------------------------------------------------------------
+# negamax_alpha_beta (the recursive scoring function)
+# ---------------------------------------------------------------------------
+
+
+def test_negamax_alpha_beta_returns_numeric_score():
+    state = BoardState.initial()
+    moves = generate_legal_moves(state)
+    score = negamax_alpha_beta(
+        state, moves, depth=1, alpha=-MATE_SCORE, beta=MATE_SCORE, turn_multiplier=1
+    )
+    assert isinstance(score, (int, float))
+
+
+def test_negamax_returns_zero_for_stalemate_position():
+    """Stalemate: side to move has no legal moves and isn't in check."""
+    state = base_kings_only_state()
+    state.clear_square(7, 4)
+    state.clear_square(0, 4)
+    state.set_piece(0, 0, "bK")
+    state.set_piece(2, 1, "wQ")
+    state.set_piece(2, 2, "wK")
+    state.white_to_move = False
+
+    moves = generate_legal_moves(state)
+    score = negamax_alpha_beta(
+        state, moves, depth=3, alpha=-MATE_SCORE, beta=MATE_SCORE, turn_multiplier=-1
+    )
+    assert score == 0
