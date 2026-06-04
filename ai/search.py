@@ -1,3 +1,20 @@
+"""Move search and move selection for a chess position.
+
+Provides several search functions:
+
+* :func:`findRandomMove` - choose a random legal move.
+* :func:`findBestMove` - shallow one-ply move selection.
+* :func:`findBestMoveMinMax` - choose the best move using
+  negamax search with alpha-beta pruning.
+* :func:`findMoveNegaMax` - recursive negamax search.
+* :func:`findMoveNegaMaxAlphaBetaPruning` - negamax search
+  with alpha-beta pruning and explicit mate/stalemate handling.
+
+Static positions are scored by :func:`boardScore` from white's
+perspective: positive values favour white, negative values favour black.
+Terminal mate and stalemate positions are handled explicitly in search.
+"""
+
 from __future__ import annotations
 
 import random
@@ -8,7 +25,7 @@ from core.move import Move
 from core.rules import generate_legal_moves
 from core.rules import generate_legal_moves, is_in_check
 
-from .evaluation import CHECKMATE, boardScore
+from .evaluation import CHECKMATE, board_score
 
 DEPTH = 3
 MATE_SCORE = 100000
@@ -33,7 +50,7 @@ def findBestMove(state: BoardState, validMoves: list[Move]) -> Optional[Move]:
         opponentMoves = generate_legal_moves(state)
 
         if not opponentMoves:
-            score = -turnMultiplier * boardScore(state)
+            score = -turnMultiplier * board_score(state)
             state.undo_move()
             if score > playerMaxScore:
                 playerMaxScore = score
@@ -43,7 +60,7 @@ def findBestMove(state: BoardState, validMoves: list[Move]) -> Optional[Move]:
         opponentMinScore = CHECKMATE
         for opponentMove in opponentMoves:
             state.apply_move(opponentMove)
-            score = turnMultiplier * boardScore(state)
+            score = turnMultiplier * board_score(state)
             if score < opponentMinScore:
                 opponentMinScore = score
             state.undo_move()
@@ -82,7 +99,7 @@ def findMoveNegaMax(state: BoardState, validMoves: list[Move], depth: int, turnM
         return 0
 
     if depth == 0:
-        return turnMultiplier * boardScore(state)
+        return turnMultiplier * board_score(state)
 
     maxScore = -MATE_SCORE
     for move in validMoves:
@@ -119,7 +136,7 @@ def findMoveNegaMaxAlphaBetaPruning(
         return 0
 
     if depth == 0:
-        return turnMultiplier * boardScore(state)
+        return turnMultiplier * board_score(state)
 
     maxScore = -MATE_SCORE
 

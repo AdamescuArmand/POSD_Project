@@ -10,7 +10,7 @@ from ai.search import (
     findMoveNegaMaxAlphaBetaPruning,
     findRandomMove,
 )
-from ai.evaluation import CHECKMATE, boardScore
+from ai.evaluation import CHECKMATE, board_score
 
 
 def clear_board(state: BoardState) -> BoardState:
@@ -82,14 +82,14 @@ def test_search_finds_winning_move_for_white_endgame() -> None:
     state.white_to_move = True
 
     moves = generate_legal_moves(state)
-    before = boardScore(state)
+    before = board_score(state)
     best = findBestMoveMinMax(state, moves, depth=2)
 
     assert best is not None
     assert best in moves
 
     state.apply_move(best)
-    after = boardScore(state)
+    after = board_score(state)
     assert after >= before
 
 
@@ -103,14 +103,14 @@ def test_search_finds_winning_move_for_black_endgame() -> None:
     state.white_to_move = False
 
     moves = generate_legal_moves(state)
-    before = boardScore(state)
+    before = board_score(state)
     best = findBestMoveMinMax(state, moves, depth=2)
 
     assert best is not None
     assert best in moves
 
     state.apply_move(best)
-    after = boardScore(state)
+    after = board_score(state)
     assert after <= before
 
 
@@ -150,11 +150,11 @@ def test_search_chooses_move_that_improves_evaluation_at_depth_one() -> None:
     state.set_piece(5, 3, "bR")
     state.set_piece(4, 7, "wP")
     moves = generate_legal_moves(state)
-    before = boardScore(state)
+    before = board_score(state)
     best = findBestMoveMinMax(state, moves, depth=1)
     assert best is not None
     state.apply_move(best)
-    after = boardScore(state)
+    after = board_score(state)
     assert after > before
 
 def mating_moves(state) -> list[str]:
